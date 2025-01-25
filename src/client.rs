@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::io;
 use std::mem::MaybeUninit;
@@ -54,6 +55,7 @@ pub struct Client {
 pub struct ClientBuilder {
     name_node: String,
     user: Option<String>,
+    options: HashMap<String, String>,
     kerberos_ticket_cache_path: Option<String>,
 }
 
@@ -86,6 +88,7 @@ impl ClientBuilder {
         ClientBuilder {
             name_node: name_node.to_string(),
             user: None,
+            options: HashMap::new(),
             kerberos_ticket_cache_path: None,
         }
     }
@@ -101,6 +104,22 @@ impl ClientBuilder {
     /// ```
     pub fn with_user(mut self, user: &str) -> ClientBuilder {
         self.user = Some(user.to_string());
+        self
+    }
+
+    /// Sets custom configuration strings for hdfs in the ClientBuilder
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::collections::HashMap;
+    /// use hdrs::{Client, ClientBuilder};
+    ///
+    /// // For a loaded hadoop with the aws package
+    /// let client = ClientBuilder::new("default").with_option("fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain").connect();
+    /// ```
+    pub fn with_option<K: ToString, V: ToString>(mut self, key: V, value: K) -> ClientBuilder {
+        self.options.insert(key.to_string(), value.to_string());
         self
     }
 
@@ -152,6 +171,15 @@ impl ClientBuilder {
                 user.write(CString::new(v)?);
                 unsafe {
                     hdfsBuilderSetUserName(builder, user.assume_init_ref().as_ptr());
+                }
+            }
+
+            for (k, v) in self.options {
+                // WIll be cleaned directly after creation
+                let key = CString::new(k.as_bytes())?;
+                let val = CString::new(v.as_bytes())?;
+                unsafe {
+                    hdfsBuilderConfSetStr(builder, key.as_ptr(), val.as_ptr());
                 }
             }
 
